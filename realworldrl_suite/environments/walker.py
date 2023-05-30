@@ -470,6 +470,10 @@ class RealWorldPlanarWalker(realworld_env.Base, walker.PlanarWalker):
 
     # Multi-objective setup
     realworld_env.Base._setup_multiobj(self, multiobj_spec)
+    
+    # Required for terminating upon fall
+    self._healthy_z_range = (0.8, 2.0)
+    self._healthy_angle_range = (-1.0, 1.0)
 
   # Safety methods.
   def _setup_safety(self, safety_spec):
@@ -629,3 +633,23 @@ class RealWorldPlanarWalker(realworld_env.Base, walker.PlanarWalker):
     realworld_env.Base.after_step(self, physics)
     walker.PlanarWalker.after_step(self, physics)
     self._last_action = None
+  
+  
+  def is_healthy(self, physics):
+        z, angle = physics.data.qpos[1:3]
+
+        min_z, max_z = self._healthy_z_range
+        min_angle, max_angle = self._healthy_angle_range
+
+        healthy_z = min_z < z < max_z
+        healthy_angle = min_angle < angle < max_angle
+        is_healthy = healthy_z and healthy_angle
+        return is_healthy
+  
+  def get_termination(self, physics):
+    is_healthy = self.is_healthy(physics)
+    if is_healthy:
+      res = None
+    else:
+      res = 0.0
+    return res
