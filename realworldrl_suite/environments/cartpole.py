@@ -21,6 +21,7 @@ import dm_control.suite.cartpole as cartpole
 import dm_control.suite.common as common
 from lxml import etree
 import numpy as np
+import math
 
 from realworldrl_suite.environments import realworld_env
 from realworldrl_suite.utils import loggers
@@ -268,7 +269,7 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
   """
 
   def __init__(self, safety_spec, delay_spec, noise_spec, perturb_spec,
-               dimensionality_spec, multiobj_spec, **kwargs):
+               dimensionality_spec, multiobj_spec, swing_up, **kwargs):
     """Initialize the RealWorldBalance task.
 
     Args:
@@ -371,11 +372,13 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
           rewards.
         observed - boolean indicating whether the defined objectives should be
           added to the observation.
+        swing_up - boolean inherited from parent class defining whether the 
+          desired task setting is for balance or swing up
       **kwargs: extra parameters passed to parent class (cartpole.Balance)
     """
     # Initialize parent classes.
     realworld_env.Base.__init__(self)
-    cartpole.Balance.__init__(self, **kwargs)
+    cartpole.Balance.__init__(self, swing_up=swing_up, **kwargs)
 
     # Safety setup.
     self._setup_safety(safety_spec)
@@ -394,6 +397,11 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
 
     # Multi-objective setup
     realworld_env.Base._setup_multiobj(self, multiobj_spec)
+    
+    # Episode termination due to pole drop in balance task
+    self._swing_up = swing_up
+    self.theta_threshold_radians = 12 * 2 * math.pi / 360
+    self.x_threshold = 2.4
 
   # Safety methods.
   def _setup_safety(self, safety_spec):
@@ -528,3 +536,25 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
     realworld_env.Base.after_step(self, physics)
     cartpole.Balance.after_step(self, physics)
     self._last_action = None
+    
+  def is_healthy(self, physics):
+        x, x_dot, theta, theta_dot = physics.get_state()
+        is_healthy = not bool(
+            x < -self.x_threshold
+            or x > self.x_threshold
+            or theta < -self.theta_threshold_radians
+            or theta > self.theta_threshold_radians
+        )
+        return is_healthy
+  
+  def get_termination(self, physics):
+    if self._swing_up:
+      res = None
+    else:
+      is_healthy = self.is_healthy(physics)
+      if is_healthy:
+        res = None
+      else:
+        res = 0.0
+    return res
+
