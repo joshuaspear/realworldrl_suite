@@ -40,7 +40,9 @@ class LoggingEnv(control.Environment):
                control_timestep=None,
                n_sub_steps=None,
                log_every=100,
-               flat_observation=False):
+               flat_observation=False,
+               log_perturb_vars=False,
+               ):
     """A subclass of `Environment` with logging hooks.
 
     Args:
@@ -60,6 +62,8 @@ class LoggingEnv(control.Environment):
       log_every: How many episodes between each log write.
       flat_observation: If True, observations will be flattened and concatenated
         into a single numpy array.
+      log_perturb_vars: If True, delta and current values for the task 
+        perturbations will be logged
 
     Raises:
       ValueError: If both `n_sub_steps` and `control_timestep` are supplied.
@@ -78,6 +82,7 @@ class LoggingEnv(control.Environment):
     self._log_every = log_every
     self._ep_counter = 0
     self._log_safety_vars = self._task.safety_enabled and log_safety_vars
+    self._log_perturb_vars = self._task.perturb_enabled and log_perturb_vars
     if self._logger:
       meta_dict = dict(task_name=type(self._task).__name__)
       if self._task.safety_enabled:
@@ -85,12 +90,15 @@ class LoggingEnv(control.Environment):
         if self._log_safety_vars:
           meta_dict['safety_vars'] = list(
               list(self._task.safety_vars(self._physics).keys()))
+      if self._task.perturb_enabled:
+        meta_dict['perturb_params'] = self._task.get_perturb_params()
       self._logger.set_meta(meta_dict)
 
       self._stats_acc = accumulators.StatisticsAccumulator(
           acc_safety=self._task.safety_enabled,
           acc_safety_vars=self._log_safety_vars,
-          acc_multiobj=self._task.multiobj_enabled)
+          acc_multiobj=self._task.multiobj_enabled,
+          acc_perturb=self._log_perturb_vars)
     else:
       self._stats_acc = None
 
@@ -164,6 +172,9 @@ class LoggingEnv(control.Environment):
           self._task.safety_vars(self._physics))
     if self._task.multiobj_enabled and 'multiobj' not in ts.observation:
       ts.observation['multiobj'] = self._task.get_multiobj_obs(self._physics)
+    if self._log_perturb_vars:
+      ts.observation["perturb_vars"] = copy.deepcopy(
+        self._task.perturb_vars())
     self._stats_acc.push(ts)
 
   def get_logs(self):

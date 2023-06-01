@@ -620,6 +620,26 @@ class Base(object):
 
   def safety_vars(self, physics):
     raise NotImplementedError
+  
+  def get_perturb_params(self):
+    res = {
+      "perturb_period": self._perturb_period, 
+      "perturb_param": self._perturb_param, 
+      "perturb_scheduler": self._perturb_scheduler, 
+      "perturb_saw_wave_sign": self._perturb_saw_wave_sign, 
+      "perturb_cur": self._perturb_cur, 
+      "perturb_start": self._perturb_start, 
+      "perturb_min": self._perturb_min, 
+      "perturb_max": self._perturb_max, 
+      "perturb_std": self._perturb_std, 
+    }
+    return res
+    
+  def perturb_vars(self):
+    perturb_vars = collections.OrderedDict(
+        perturb_cur = self._perturb_cur,
+        )
+    return perturb_vars
 
   def _populate_constraints_obs(self, physics):
     """Copies over the safety vars and populates the contraints observation."""

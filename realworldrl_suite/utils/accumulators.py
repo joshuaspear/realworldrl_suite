@@ -28,7 +28,8 @@ class StatisticsAccumulator(object):
   used by the Evaluators class.
   """
 
-  def __init__(self, acc_safety, acc_safety_vars, acc_multiobj, auto_acc=True):
+  def __init__(self, acc_safety, acc_safety_vars, acc_multiobj, auto_acc=True,
+               acc_perturb=False):
     """A class to easily accumulate necessary statistics for evaluation.
 
     Args:
@@ -43,6 +44,7 @@ class StatisticsAccumulator(object):
     self._acc_safety_vars = acc_safety_vars
     self._acc_multiobj = acc_multiobj
     self._auto_acc = auto_acc
+    self._acc_perturb = acc_perturb
     self._buffer = []  # Buffer of timesteps of current episode
     self._stat_buffers = dict()
 
@@ -66,6 +68,8 @@ class StatisticsAccumulator(object):
       self._acc_safety_vars_stats()
     if self._acc_multiobj:
       self._acc_multiobj_stats()
+    if self._acc_perturb:
+      self._acc_perturb_stats()
     self._acc_return_stats()
 
   def _acc_safety_stats(self):
@@ -141,6 +145,24 @@ class StatisticsAccumulator(object):
     return_stats['episode_totals'].append(episode_totals)
     # Accumulate the number of violations at each timestep in the episode.
     self._stat_buffers['return_stats'] = return_stats
+    
+  def _acc_perturb_stats(self):
+    ep_buffer = []
+    for ts in self._buffer:
+      ep_buffer.append(ts.observation["perturb_vars"]["perturb_cur"])
+    ep_buffer = np.array(ep_buffer)
+    avg_perturb_val = np.mean(ep_buffer)
+    unique_perturb_vals = len(np.unique(ep_buffer))
+    std_perturb_vals = np.std(ep_buffer)
+    _stats = self._stat_buffers.get(
+      'perturb_stats', dict(avg_perturb_val=[], unique_perturb_vals=[], 
+                            std_perturb_vals=[])
+      )
+    _stats["avg_perturb_val"].append(avg_perturb_val)
+    _stats["unique_perturb_vals"].append(unique_perturb_vals)
+    _stats["std_perturb_vals"].append(std_perturb_vals)
+    self._stat_buffers['perturb_stats'] = _stats
+     
 
   def to_ndarray_dict(self):
     """Convert stats buffer to ndarrays to make disk writing more efficient."""
