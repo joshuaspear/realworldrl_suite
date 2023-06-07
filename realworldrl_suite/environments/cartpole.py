@@ -81,7 +81,8 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
                       dimensionality_spec=None,
                       multiobj_spec=None,
                       combined_challenge=None,
-                      make_discrete=False):
+                      make_discrete=False,
+                      bins=2):
   """Returns the Cartpole Balance task with specified real world attributes.
 
   Args:
@@ -98,6 +99,7 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
     combined_challenge: string that can be 'easy', 'medium', or 'hard'.
       Specifying the combined challenge (can't be used with any other spec).
     make_discrete: boolean defining whether the action space should be discrete
+    bins: int defining the number of bins for use with 'make_discrete'
   """
   physics = Physics.from_xml_string(*cartpole.get_model_and_assets())
   safety_spec = safety_spec or {}
@@ -136,7 +138,7 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
   )
   
   if make_discrete:
-    task.make_discrete(physics=physics)
+    task.make_discrete(physics=physics, bins=bins)
   
   environment_kwargs = environment_kwargs or {}
   if log_output:
@@ -416,9 +418,10 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
     self.disc_act_lkp = None 
     self.before_step = self.__before_step
     self.__disc_action_space = None
-    self.bins=2
+    self.bins = None
 
-  def make_discrete(self, physics:Physics):
+  def make_discrete(self, physics:Physics, bins:int):
+    self.bins = bins
     self.disc_act_lkp, self.naction = self.get_action_lkp(
       physics=physics, bins=self.bins)
     self.before_step = self.__disc_before_step
