@@ -16,6 +16,7 @@
 """Real-world control of cartpole."""
 
 import collections
+from typing import Any
 
 import dm_control.suite.cartpole as cartpole
 import dm_control.suite.common as common
@@ -26,6 +27,8 @@ import math
 from realworldrl_suite.environments import realworld_env
 from realworldrl_suite.utils import loggers
 from realworldrl_suite.utils import wrappers
+from gym import spaces
+from dm_env.specs import DiscreteArray
 
 _DEFAULT_TIME_LIMIT = 10
 
@@ -77,7 +80,8 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
                       perturb_spec=None,
                       dimensionality_spec=None,
                       multiobj_spec=None,
-                      combined_challenge=None):
+                      combined_challenge=None,
+                      make_discrete=False):
   """Returns the Cartpole Balance task with specified real world attributes.
 
   Args:
@@ -93,6 +97,7 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
     multiobj_spec: dictionary that specifies complementary objectives.
     combined_challenge: string that can be 'easy', 'medium', or 'hard'.
       Specifying the combined challenge (can't be used with any other spec).
+    make_discrete: boolean defining whether the action space should be discrete
   """
   physics = Physics.from_xml_string(*cartpole.get_model_and_assets())
   safety_spec = safety_spec or {}
@@ -129,6 +134,10 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
       dimensionality_spec=dimensionality_spec,
       multiobj_spec=multiobj_spec
   )
+  
+  if make_discrete:
+    task.make_discrete(physics=physics)
+  
   environment_kwargs = environment_kwargs or {}
   if log_output:
     logger = loggers.PickleLogger(path=log_output)
@@ -136,7 +145,6 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
     logger = None
   return wrappers.LoggingEnv(
       physics, task, logger=logger, time_limit=time_limit, **environment_kwargs)
-
 
 def realworld_swingup(time_limit=_DEFAULT_TIME_LIMIT,
                       random=None,
@@ -402,6 +410,44 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
     self._swing_up = swing_up
     self.theta_threshold_radians = 12 * 2 * math.pi / 360
     self.x_threshold = 2.4
+    
+    # Required for discrete action overlay
+    self.naction = None
+    self.disc_act_lkp = None 
+    self.before_step = self.__before_step
+    self.__disc_action_space = None
+    self.bins=2
+
+  def make_discrete(self, physics:Physics):
+    self.disc_act_lkp, self.naction = self.get_action_lkp(
+      physics=physics, bins=self.bins)
+    self.before_step = self.__disc_before_step
+    if self.naction > 1:
+      raise NotImplementedError
+    elif self.naction == 1:
+      self.__disc_action_space = DiscreteArray(num_values=self.bins, dtype=int)
+    else:
+      raise ValueError("self.naction has invalid value: {}".format(
+        self.naction))
+    self.action_spec = self.__action_spec
+    
+  def __action_spec(self, physics):
+    return self.__disc_action_space
+      
+  def get_action_lkp(self, physics:Physics, bins:int):
+    __action_space = self.action_spec(physics)
+    action_low, action_high = __action_space.minimum, __action_space.maximum
+    naction = __action_space.shape
+    if len(naction) > 1:
+      raise Exception("")
+    naction = naction[0]
+    action_table = np.reshape(
+      [np.linspace(action_low[i], action_high[i], bins) 
+      for i in range(naction)], [naction, bins]
+      )
+    assert action_table.shape == (naction, bins)
+    return action_table, naction
+
 
   # Safety methods.
   def _setup_safety(self, safety_spec):
@@ -522,15 +568,25 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
     xml_string_modified = etree.tostring(mjcf, pretty_print=True)
     physics = Physics.from_xml_string(xml_string_modified, common.ASSETS)
     return physics
-
-  def before_step(self, action, physics):
+  
+  def __disc_before_step(self, action, physics):
+    """Updates the environment using the action and returns a `TimeStep`."""
+    self._last_action = physics.control()
+    action_min = self.action_spec(physics).minimum
+    action_max = self.action_spec(physics).maximum
+    action = realworld_env.Base.before_step(self, action, action_min,
+                                            action_max)
+    action = self.disc_act_lkp[np.arange(self.naction), action]
+    cartpole.Balance.before_step(self, action, physics)
+  
+  def __before_step(self, action, physics):
     """Updates the environment using the action and returns a `TimeStep`."""
     self._last_action = physics.control()
     action_min = self.action_spec(physics).minimum[:]
-    action_max = self.action_spec(physics).maximum[:]
+    action_max = self.action_spec(physics).maximum[:]  
     action = realworld_env.Base.before_step(self, action, action_min,
                                             action_max)
-    cartpole.Balance.before_step(self, action, physics)
+    cartpole.Balance.before_step(self, action, physics)  
 
   def after_step(self, physics):
     realworld_env.Base.after_step(self, physics)

@@ -24,8 +24,10 @@ import copy
 from dm_control.rl import control
 import dm_env
 from dm_env import specs
+import numpy as np
 from realworldrl_suite.utils import accumulators
 import six
+from dm_env.specs import DiscreteArray as DA
 
 
 class LoggingEnv(control.Environment):
