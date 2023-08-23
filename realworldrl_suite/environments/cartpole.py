@@ -16,7 +16,7 @@
 """Real-world control of cartpole."""
 
 import collections
-from typing import Any
+from typing import Tuple, List
 
 import dm_control.suite.cartpole as cartpole
 import dm_control.suite.common as common
@@ -82,7 +82,9 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
                       multiobj_spec=None,
                       combined_challenge=None,
                       make_discrete=False,
-                      bins=2):
+                      bins=2, 
+                      values:List[float]=None
+                      ):
   """Returns the Cartpole Balance task with specified real world attributes.
 
   Args:
@@ -100,6 +102,8 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
       Specifying the combined challenge (can't be used with any other spec).
     make_discrete: boolean defining whether the action space should be discrete
     bins: int defining the number of bins for use with 'make_discrete'
+    values: list of floats defining the continuous actions associated with each 
+      bin
   """
   physics = Physics.from_xml_string(*cartpole.get_model_and_assets())
   safety_spec = safety_spec or {}
@@ -138,7 +142,7 @@ def realworld_balance(time_limit=_DEFAULT_TIME_LIMIT,
   )
   
   if make_discrete:
-    task.make_discrete(physics=physics, bins=bins)
+    task.make_discrete(physics=physics, values=values)
   
   environment_kwargs = environment_kwargs or {}
   if log_output:
@@ -420,10 +424,16 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
     self.__disc_action_space = None
     self.bins = None
 
-  def make_discrete(self, physics:Physics, bins:int):
-    self.bins = bins
-    self.disc_act_lkp, self.naction = self.get_action_lkp(
-      physics=physics, bins=self.bins)
+  def make_discrete(
+    self, 
+    physics:Physics, 
+    values:List[float], 
+    ):
+    self.bins = len(values)
+    self.naction = self.action_spec(physics).shape[0]
+    self.disc_act_lkp = values*self.naction
+    self.disc_act_lkp = np.reshape(self.disc_act_lkp, [self.naction, self.bins])
+    assert self.disc_act_lkp.shape == (self.naction, self.bins)
     self.before_step = self.__disc_before_step
     if self.naction > 1:
       raise NotImplementedError
@@ -436,21 +446,6 @@ class RealWorldBalance(realworld_env.Base, cartpole.Balance):
     
   def __action_spec(self, physics):
     return self.__disc_action_space
-      
-  def get_action_lkp(self, physics:Physics, bins:int):
-    __action_space = self.action_spec(physics)
-    action_low, action_high = __action_space.minimum, __action_space.maximum
-    naction = __action_space.shape
-    if len(naction) > 1:
-      raise Exception("")
-    naction = naction[0]
-    action_table = np.reshape(
-      [np.linspace(action_low[i], action_high[i], bins) 
-      for i in range(naction)], [naction, bins]
-      )
-    assert action_table.shape == (naction, bins)
-    return action_table, naction
-
 
   # Safety methods.
   def _setup_safety(self, safety_spec):
